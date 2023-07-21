@@ -1,0 +1,27 @@
+{
+  "applications": {
+    "gecko": {
+      "id": "mbox.export@thunderbird.net",
+      "strict_min_version": "115.0"
+    }
+  },
+  "manifest_version": 2,
+  "name": "MBOX Export",
+  "version": "1",
+  "author": "John Bieling",
+  "icons": {
+    "64": "64.png",
+    "32": "32.png",
+    "16": "16.png"
+  },
+  "permissions": [
+    "storage",
+    "menus",
+    "messagesRead",
+    "accountsRead",
+    "downloads"
+  ],
+  "background": {
+    "page": "background.html"
+  }
+}
