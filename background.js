@@ -1,4 +1,4 @@
-import { parse5322 } from "./email-addresses.js";
+import { parse5322 } from "./rfc5322/email-addresses.js";
 
 // Generator function to loop more easily over message pages.
 async function* listMessages(folder) {
