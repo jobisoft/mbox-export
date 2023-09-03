@@ -1,14 +1,5 @@
 import { parse5322 } from "./modules/rfc5322/email-addresses.js";
-import {
-  BlobReader,
-  BlobWriter,
-  TextReader,
-  TextWriter,
-  ZipReader,
-  ZipWriter,
-  fs,
-  getMimeType,
-} from "../modules/zip.js/index.js";
+import { fs } from "../modules/zip.js/index.js";
 
 const COMPRESSION_LEVEL = 0; // 0 - 9
 
@@ -27,7 +18,21 @@ async function* listMessages(folder) {
   }
 }
 
-async function exportFolder(exportItem, zipFs) {
+function getReadableSize(bytes) {
+  let units = ["KB", "MB", "TB"];
+  let readableSize = units.reduce((rv, unit) => {
+    if (rv.size / 1024 > 1) {
+      return { size: rv.size / 1024, bytes, unit }
+    } else {
+      return rv
+    }
+  }, { size: bytes, bytes, unit: "B" });
+
+  readableSize.roundedSize = Math.round(readableSize.size * 100) / 100;
+  return readableSize;
+}
+
+async function getMboxBytes(exportItem) {
   console.log("Exporting", exportItem);
 
   // If the item has an accountId, it is a folder, whose messages we can export.
@@ -62,39 +67,42 @@ async function exportFolder(exportItem, zipFs) {
   }
   let totalSize = mboxStrings.reduce((total, item) => item.length + total, 0);
 
-  /*
-  // The Blob constructor accepts a sequence and each element may not exceed 2GB,
-  // split the data into smaller chunks.
-  let sequence = [];
-  let chunkSize = 1024 * 1024 * 1024 * 3;
-  let totalSize = mboxStrings.reduce((total, item) => item.length + total, 0);
-  {
-    let pos = 0;
-    while (pos + chunkSize <= totalSize) {
-      sequence.push(new Uint8Array(chunkSize));
-      pos += chunkSize;
-    }
-    sequence.push(new Uint8Array(totalSize - pos));
-  }*/
-
-  // Convert binary mbox strings to Uint8Array(s). 
+  // Convert binary mbox strings to Uint8Array. 
   let pos = 0;
   let mboxBytes = new Uint8Array(totalSize);
   for (let mboxString of mboxStrings) {
     for (let i = 0; i < mboxString.length; i++) {
-      //let currSequence = Math.floor(pos / chunkSize);
-      //let offset = currSequence * chunkSize
-      //sequence[currSequence][pos - offset] = mboxString.charCodeAt(i) & 0xff;
       mboxBytes[pos++] = mboxString.charCodeAt(i) & 0xff;
-      //pos++
     }
   }
-  //let blob = new Blob(sequence, { type: "text/plain" });
+  return mboxBytes;
+}
 
-  // If no zip object given, return just the blob.
-  if (!zipFs) {
-    return mboxBytes.buffer;//blob;
+async function getMboxBlob(exportItem) {
+  let bytes = await getMboxBytes(exportItem);
+  let buffer = bytes.buffer;
+  // The Blob constructor accepts a sequence and each element may not exceed 2GB,
+  // split the data into smaller chunks.
+  let pos = 0;
+  let chunk = 1024 * 1024 * 1024;
+  let sequence = [];
+  console.log(bytes);
+  while (pos + chunk <= bytes.byteLength) {
+    sequence.push(new Uint8Array(buffer, pos, chunk));
+    pos += chunk;
   }
+  sequence.push(new Uint8Array(buffer, pos));
+  return new Blob(sequence, { type: "text/plain" });
+}
+
+async function getZippedBlob(exportItem) {
+  let zipFs = new fs.FS();
+  await addItem(exportItem, zipFs);
+  return zipFs.exportBlob({ level: COMPRESSION_LEVEL });
+}
+
+async function addItem(exportItem, zipFs) {
+  let mboxBytes = await getMboxBytes(exportItem);
 
   // Attach content of this folder as an mboxrd file.
   zipFs.addUint8Array(`${exportItem.name}.mboxrd`, mboxBytes, { useWebWorkers: false }); // webWorkers cause a CSP violation 
@@ -102,23 +110,8 @@ async function exportFolder(exportItem, zipFs) {
   // Recursively attach subfolders.
   for (let subFolder of exportItem.subFolders || exportItem.folders) {
     let zipDir = zipFs.addDirectory(subFolder.name);
-    await exportFolder(subFolder, zipDir);
+    await addItem(subFolder, zipDir);
   }
-  return null;
-}
-
-function getReadableSize(bytes) {
-  let units = ["KB", "MB", "TB"];
-  let readableSize = units.reduce((rv, unit) => {
-    if (rv.size / 1024 > 1) {
-      return { size: rv.size / 1024, bytes, unit }
-    } else {
-      return rv
-    }
-  }, { size: bytes, bytes, unit: "B" });
-
-  readableSize.roundedSize = Math.round(readableSize.size * 100) / 100;
-  return readableSize;
 }
 
 // Menu click listener.
@@ -131,14 +124,10 @@ async function onExport(clickData, tab) {
   let blob;
   let filename;
   if (exportItem.subFolders?.length || exportItem.folders?.length) {
-    let zipFs = new fs.FS();
-    await exportFolder(exportItem, zipFs);
-    console.log("Export Start")
-    blob = await zipFs.exportBlob({ level: COMPRESSION_LEVEL });
-    console.log("Export Stop")
+    blob = await getZippedBlob(exportItem);
     filename = `${exportItem.name}.zip`;
   } else {
-    blob = await exportFolder(exportItem);
+    blob = await getMboxBlob(exportItem);
     filename = `${exportItem.name}.mbox`;
   }
 
@@ -193,92 +182,6 @@ async function onExport(clickData, tab) {
   URL.revokeObjectURL(url);
   console.log("Done.");
 }
-
-// Menu click listener.
-/*async function onExportOld(clickData, tab) {
-  let exportItem = clickData.selectedFolder || clickData.selectedAccount;
-  if (!exportItem || !tab.mailTab) {
-    return;
-  }
-
-  let buffer;
-  let type;
-  let filename;
-  if (exportItem.subFolders?.length || exportItem.folders?.length) {
-    let zip = new JSZip();
-    await exportFolder(exportItem, zip);
-    buffer = await zip.generateAsync({ type: "arraybuffer" });
-    type = "application/zip";
-    filename = `${exportItem.name}.zip`;
-  } else {
-    buffer = await exportFolder(exportItem);
-    type = "text/plain";
-    filename = `${exportItem.name}.mbox`;
-  }
-
-  // The Blob constructor accepts a sequence and each element may not exceed 2GB,
-  // split the data into smaller chunks.
-  let pos = 0;
-  let chunk = 1024 * 1024 * 1024;
-  let sequence = [];
-  while (pos + chunk <= buffer.byteLength) {
-    sequence.push(new Uint8Array(buffer, pos, chunk));
-    pos += chunk;
-  }
-  sequence.push(new Uint8Array(buffer, pos));
-
-  let blob = new Blob(sequence, { type });
-  let url = URL.createObjectURL(blob);
-  let readableSize = getReadableSize(blob.size);
-  console.log(`${readableSize.roundedSize} ${readableSize.unit} (${readableSize.bytes} bytes)`);
-
-  // Initiate download.
-  console.log("Downloading")
-  let downloadId;
-  try {
-    downloadId = await browser.downloads.download({
-      filename,
-      url,
-      saveAs: true
-    });
-  } catch (ex) {
-    console.error(ex);
-  }
-
-  // Monitor download.
-  if (downloadId) {
-    // While the download is ongoing, we poll the download manager every second
-    // to get an update. However, the "bytesReceived" are always the full size,
-    // no incremental progress (probably because it is not a real download). :-(
-    let pollId = window.setInterval(async () => {
-      let [searching] = await browser.downloads.search({ id: downloadId });
-      console.log(JSON.stringify(searching));
-    }, 1000);
-
-    await new Promise(resolve => {
-      let listener = downloadDelta => {
-        if (downloadDelta.id != downloadId) {
-          return;
-        }
-
-        console.log(downloadDelta);
-        if (downloadDelta.state && (
-          downloadDelta.state.current == "complete" ||
-          downloadDelta?.state.current == "interrupted"
-        )) {
-          browser.downloads.onChanged.removeListener(listener);
-          resolve();
-        }
-      }
-      browser.downloads.onChanged.addListener(listener);
-    })
-
-    window.clearInterval(pollId);
-  }
-
-  URL.revokeObjectURL(url);
-  console.log("Done.");
-}*/
 
 async function onImport({ selectedFolder }, tab) {
   console.log(selectedFolder);
