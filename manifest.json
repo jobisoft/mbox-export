@@ -6,8 +6,9 @@
     }
   },
   "manifest_version": 2,
-  "name": "MBOX Export",
+  "name": "MBox Import/Export",
   "version": "1",
+  "description": "Import/Export mboxrd files.",
   "author": "John Bieling",
   "icons": {
     "64": "64.png",
