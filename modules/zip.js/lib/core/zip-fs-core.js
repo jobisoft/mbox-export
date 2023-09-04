@@ -536,12 +536,12 @@ class FS {
 		return this.root.addBlob(name, blob, options);
 	}
 
-	addUint8Array(name, blob, options) {
-		return this.root.addUint8Array(name, blob, options);
-	}
-
 	addData64URI(name, dataURI, options) {
 		return this.root.addData64URI(name, dataURI, options);
+	}
+
+	addUint8Array(name, array, options) {
+		return this.root.addUint8Array(name, array, options);
 	}
 
 	addHttpContent(name, url, options) {

@@ -1,7 +1,4 @@
-import {
-  fs,
-  getMimeType,
-} from "../modules/zip.js/index.js";
+import { fs, getMimeType } from "../modules/zip.js/index.js";
 
 const urlParams = new URLSearchParams(window.location.search);
 let msgId = parseInt(urlParams.get('msgId'), 10);
