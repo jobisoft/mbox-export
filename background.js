@@ -1,4 +1,3 @@
-import { parse5322 } from "./modules/rfc5322/email-addresses.js";
 import { fs, configure } from "./modules/zip.js/index.js";
 
 const COMPRESSION_LEVEL = 6; // 0 - 9
@@ -63,14 +62,8 @@ async function getMboxFiles(folderOrAccount, { fileSizeLimit = 0 }) {
       raw = raw.replace(/^(>*)(From\s)/m, "$1>$2");
 
       // Minimal compatibility.
-      let parsed = parse5322.parseOneAddress(message.author);
-      if (!parsed && message.author.indexOf("<") != -1) {
-        let author = message.author.split("<");
-        author[0] = `"${author[0]}"`;
-        parsed = parse5322.parseOneAddress(author.join("<"));
-      }
-      let address = parsed ? parsed.address : message.author;
-      raw = `From ${address} ${message.date.toUTCString()}\n` + raw;
+      let parsed = await browser.messengerUtilities.parseMailboxString(message.author);
+      raw = `From ${parsed[0].email} ${message.date.toUTCString()}\n` + raw;
 
       if (fileSizeLimit && mboxString.length + raw.length > fileSizeLimit) {
         mboxStrings.push(mboxString);
